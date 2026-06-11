@@ -102,6 +102,25 @@
   .note-input { flex:1; background:transparent; border:1px solid var(--border); border-radius:3px; padding:7px 8px; color:var(--green); font-family:'Courier New',monospace; font-size:12px; outline:none; -webkit-appearance:none; }
   .note-input:focus { border-color:var(--gdim); }
   .note-list { max-height:180px; overflow-y:auto; }
+  .debrief-tabs { display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .debrief-tab { background:transparent; border:1px solid var(--border); color:var(--grey); font-family:'Courier New',monospace; font-size:9px; letter-spacing:0.12em; padding:5px 10px; border-radius:2px; cursor:pointer; transition:all 0.15s; }
+  .debrief-tab.active { background:var(--gfaint); border-color:var(--green); color:var(--green); }
+  .debrief-section { display:none; }
+  .debrief-section.active { display:block; }
+  .debrief-q { margin-bottom:12px; }
+  .debrief-q-label { font-size:9px; color:var(--amber); letter-spacing:0.15em; margin-bottom:5px; }
+  .debrief-q-input { width:100%; background:transparent; border:1px solid var(--border); border-radius:3px; padding:7px 8px; color:var(--green); font-family:'Courier New',monospace; font-size:12px; outline:none; resize:none; min-height:48px; -webkit-appearance:none; }
+  .debrief-q-input:focus { border-color:var(--gdim); }
+  .debrief-save { margin-top:8px; }
+  .debrief-log { max-height:200px; overflow-y:auto; margin-top:10px; }
+  .debrief-entry { border:1px solid var(--border); border-radius:3px; padding:8px; margin-bottom:8px; animation:fadeUp 0.2s both; }
+  .debrief-entry-date { font-size:9px; color:var(--amber); letter-spacing:0.1em; margin-bottom:6px; }
+  .debrief-entry-item { font-size:10px; color:var(--white); margin-bottom:4px; }
+  .debrief-entry-label { color:var(--grey); font-size:9px; }
+  .edit-q-list { margin-bottom:10px; }
+  .edit-q-item { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .edit-q-text { flex:1; background:transparent; border:1px solid var(--border); border-radius:3px; padding:6px 8px; color:var(--green); font-family:'Courier New',monospace; font-size:11px; outline:none; }
+  .edit-q-del { background:rgba(255,34,68,0.15); border:1px solid var(--red); color:var(--red); width:24px; height:24px; border-radius:2px; cursor:pointer; font-size:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0; }
   .note-item { padding:5px 0; border-bottom:1px solid var(--gfaint); font-size:11px; display:flex; gap:8px; animation:fadeUp 0.2s both; }
   .note-date { color:var(--grey); font-size:9px; flex-shrink:0; }
   .note-text { color:var(--white); }
@@ -206,16 +225,40 @@
       </div>
     </div>
 
-    <!-- FIELD NOTES -->
-    <div class="panel">
-      <div class="panel-header"><span class="panel-title">FIELD NOTES — NIGHTLY DEBRIEF</span></div>
+    <!-- DEBRIEF -->
+    <div class="panel" style="grid-column:1/-1">
+      <div class="panel-header">
+        <span class="panel-title">NIGHTLY DEBRIEF — ENCRYPTED LOG</span>
+        <button class="btn" onclick="toggleDebriefTab('edit')" style="font-size:8px">⚙ EDIT QUESTIONS</button>
+      </div>
       <div class="panel-body">
-        <div class="note-hint">LOG WINS, TRIGGERS, REFLECTIONS</div>
-        <div class="note-input-row">
-          <input class="note-input" id="note-input" placeholder="LOG INTEL..." onkeydown="if(event.key==='Enter')addNote()"/>
-          <button class="btn primary" onclick="addNote()">LOG</button>
+        <div class="debrief-tabs">
+          <button class="debrief-tab active" onclick="toggleDebriefTab('log')">▸ LOG TODAY</button>
+          <button class="debrief-tab" onclick="toggleDebriefTab('history')">▸ PAST ENTRIES</button>
+          <button class="debrief-tab" onclick="toggleDebriefTab('edit')">▸ EDIT QUESTIONS</button>
         </div>
-        <div class="note-list" id="note-list"></div>
+
+        <!-- LOG TODAY -->
+        <div class="debrief-section active" id="debrief-log">
+          <div id="debrief-questions"></div>
+          <div class="debrief-save">
+            <button class="btn primary" onclick="saveDebrief()">▸ TRANSMIT DEBRIEF</button>
+          </div>
+        </div>
+
+        <!-- HISTORY -->
+        <div class="debrief-section" id="debrief-history">
+          <div class="debrief-log" id="debrief-entries"></div>
+        </div>
+
+        <!-- EDIT QUESTIONS -->
+        <div class="debrief-section" id="debrief-edit">
+          <div class="edit-q-list" id="edit-q-list"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn primary" onclick="addDebriefQuestion()">+ ADD QUESTION</button>
+            <button class="btn" onclick="saveDebriefQuestions()">SAVE QUESTIONS</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -372,7 +415,7 @@ async function runBoot() {
     startClock();
     renderMissions();
     renderStreak();
-    renderNotes();
+    renderDebriefEntries();
   }, 500);
 }
 
@@ -464,29 +507,127 @@ function changeStreak(delta) {
 }
 
 // ── NOTES ─────────────────────────────────────────────────────────────────────
-function renderNotes() {
-  const list = document.getElementById("note-list");
-  if (notes.length === 0) {
-    list.innerHTML = '<div class="no-notes">// NO TRANSMISSIONS LOGGED</div>';
-    return;
-  }
-  list.innerHTML = notes.map(n => `
-    <div class="note-item">
-      <span class="note-date">[${n.date}]</span>
-      <span class="note-text">${n.text}</span>
+// ── DEBRIEF SYSTEM ───────────────────────────────────────────────────────────
+const DEFAULT_QUESTIONS = [
+  "WINS: What went well today? Any mission completed or moment you're proud of?",
+  "TRIGGERS: What was hard today? Any temptations, frustrations, or setbacks?",
+  "SCREEN INTEL: How was your YouTube and phone usage today?",
+  "BODY REPORT: Did you eat, drink water, and rest enough today?",
+  "SURF LOG: Did you surf or get outside today? How did it feel?",
+  "FAITH CHECK: Did you do quiet time? Any moments of gratitude or connection?",
+  "TOMORROW'S PRIORITY: What is the one thing you want to do first tomorrow?",
+  "GRATITUDE: Name one thing you are grateful for today, no matter how small."
+];
+
+let debriefQuestions = [];
+let debriefEntries = [];
+
+function initDebrief() {
+  debriefQuestions = load("chcc_debrief_questions", DEFAULT_QUESTIONS);
+  debriefEntries = load("chcc_debrief_entries", []);
+  renderDebriefQuestions();
+  renderDebriefEntries();
+  renderEditQuestions();
+}
+
+function toggleDebriefTab(tab) {
+  document.querySelectorAll(".debrief-section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".debrief-tab").forEach(t => t.classList.remove("active"));
+  document.getElementById("debrief-" + tab).classList.add("active");
+  document.querySelectorAll(".debrief-tab").forEach(t => {
+    if (t.textContent.toLowerCase().includes(tab === "log" ? "log" : tab === "history" ? "past" : "edit")) {
+      t.classList.add("active");
+    }
+  });
+}
+
+function renderDebriefQuestions() {
+  const container = document.getElementById("debrief-questions");
+  container.innerHTML = debriefQuestions.map((q, i) => `
+    <div class="debrief-q">
+      <div class="debrief-q-label">▸ ${q}</div>
+      <textarea class="debrief-q-input" id="dq-${i}" placeholder="ENTER TRANSMISSION..."></textarea>
     </div>
   `).join("");
 }
 
-function addNote() {
-  const input = document.getElementById("note-input");
-  const text = input.value.trim();
-  if (!text) return;
-  notes.unshift({ text, ts: new Date().toLocaleTimeString(), date: getTodayStr() });
-  input.value = "";
-  save("chcc_notes", notes);
-  renderNotes();
+function saveDebrief() {
+  const answers = debriefQuestions.map((q, i) => ({
+    question: q,
+    answer: (document.getElementById("dq-" + i) || {}).value?.trim() || ""
+  })).filter(a => a.answer);
+  
+  if (answers.length === 0) return;
+  
+  const entry = {
+    date: getTodayStr(),
+    ts: new Date().toLocaleTimeString(),
+    answers
+  };
+  
+  debriefEntries.unshift(entry);
+  save("chcc_debrief_entries", debriefEntries);
+  
+  // Clear inputs
+  debriefQuestions.forEach((_, i) => {
+    const el = document.getElementById("dq-" + i);
+    if (el) el.value = "";
+  });
+  
+  renderDebriefEntries();
+  toggleDebriefTab("history");
 }
+
+function renderDebriefEntries() {
+  const container = document.getElementById("debrief-entries");
+  if (debriefEntries.length === 0) {
+    container.innerHTML = '<div style="font-size:10px;color:var(--grey)">// NO TRANSMISSIONS LOGGED</div>';
+    return;
+  }
+  container.innerHTML = debriefEntries.map(e => `
+    <div class="debrief-entry">
+      <div class="debrief-entry-date">▸ TRANSMISSION: ${e.date} [${e.ts}]</div>
+      ${e.answers.map(a => `
+        <div class="debrief-entry-item">
+          <span class="debrief-entry-label">${a.question.split(":")[0]}: </span>${a.answer}
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
+function renderEditQuestions() {
+  const container = document.getElementById("edit-q-list");
+  container.innerHTML = debriefQuestions.map((q, i) => `
+    <div class="edit-q-item">
+      <input class="edit-q-text" id="eq-${i}" value="${q.replace(/"/g, '&quot;')}"/>
+      <button class="edit-q-del" onclick="removeDebriefQuestion(${i})">✕</button>
+    </div>
+  `).join("");
+}
+
+function addDebriefQuestion() {
+  debriefQuestions.push("NEW QUESTION: Enter your question here");
+  renderEditQuestions();
+}
+
+function removeDebriefQuestion(i) {
+  debriefQuestions.splice(i, 1);
+  renderEditQuestions();
+}
+
+function saveDebriefQuestions() {
+  debriefQuestions = debriefQuestions.map((_, i) => {
+    const el = document.getElementById("eq-" + i);
+    return el ? el.value.trim() : _;
+  }).filter(q => q);
+  save("chcc_debrief_questions", debriefQuestions);
+  renderDebriefQuestions();
+  toggleDebriefTab("log");
+}
+
+function renderNotes() {}
+function addNote() {}
 
 // ── MODAL ─────────────────────────────────────────────────────────────────────
 function openModal() {
@@ -549,6 +690,7 @@ if ('serviceWorker' in navigator) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 initData();
+initDebrief();
 runBoot();
 </script>
 </body>
